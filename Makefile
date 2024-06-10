@@ -1,10 +1,10 @@
 .PHONY: build test
 
 build:
-	go build -o bin/$(shell basename $(PWD)) main.go
+	go build -o bin/$(shell basename $(PWD)) filesync
 
 run:
-	go run main.go
+	go run filesync
 
 test:
 	go test -v ./...

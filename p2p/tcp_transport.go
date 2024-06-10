@@ -1,7 +1,10 @@
 package p2p
 
 import (
+	"errors"
 	"fmt"
+	"io"
+	"log"
 	"net"
 )
 
@@ -44,6 +47,23 @@ func (t *TCPTransport) Consume() <-chan RPC {
 	return t.rpcch
 }
 
+// Close closes the network connection.
+func (t *TCPTransport) Close() error {
+	return t.listener.Close()
+}
+
+// Dial dials a remote node.
+func (t *TCPTransport) Dial(addr string) error {
+	conn, err := net.Dial("tcp", addr)
+	if err != nil {
+		return err
+	}
+
+	go t.handleConn(conn)
+
+	return nil
+}
+
 func NewTCPTransport(opts TCPTransportOpts) *TCPTransport {
 	return &TCPTransport{
 		TCPTransportOpts: opts,
@@ -61,12 +81,17 @@ func (t *TCPTransport) ListenAndAccept() error {
 
 	go t.startAcceptLoop()
 
+	log.Printf("listening on %s\n", t.ListenAddress)
+
 	return nil
 }
 
 func (t *TCPTransport) startAcceptLoop() {
 	for {
 		conn, err := t.listener.Accept()
+		if errors.Is(err, net.ErrClosed) {
+			return
+		}
 		if err != nil {
 			fmt.Printf("TCP accept error: %s\n", err)
 		}
@@ -75,9 +100,7 @@ func (t *TCPTransport) startAcceptLoop() {
 }
 
 func (t *TCPTransport) handleConn(conn net.Conn) {
-	var err error
 	defer func() {
-		fmt.Printf("dropping peer connection: %s\n", err)
 		_ = conn.Close()
 	}()
 
@@ -101,8 +124,15 @@ func (t *TCPTransport) handleConn(conn net.Conn) {
 	rpc := RPC{}
 	for {
 		err := t.Decoder.Decode(conn, &rpc)
+		if errors.Is(err, net.ErrClosed) {
+			return
+		}
+		if errors.Is(err, io.EOF) {
+			fmt.Printf("Peer %s closed connection\n", conn.RemoteAddr())
+			return
+		}
 		if err != nil {
-			fmt.Printf("TCP read error: %s\n", err)
+			fmt.Printf("Peer %s read error: %s\n", conn.RemoteAddr(), err)
 			return
 		}
 		rpc.From = conn.RemoteAddr()

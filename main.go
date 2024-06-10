@@ -2,32 +2,39 @@ package main
 
 import (
 	"filesync/p2p"
+	"fmt"
 	"log"
 )
 
-func OnPeer(peer p2p.Peer) error {
-	log.Printf("New peer: %v", peer)
-	return nil
+func makeServer(listenAddr string, nodes ...string) *FileServer {
+	tcpTransport := p2p.NewTCPTransport(p2p.TCPTransportOpts{
+		ListenAddress: listenAddr,
+		ShakeHands:    p2p.NOPHandshake,
+		Decoder:       p2p.DefaultDecoder{},
+		OnPeer: func(p p2p.Peer) error {
+			fmt.Println("New peer connected", p)
+			return nil
+		},
+	})
+
+	return NewFileServer(FileServerOpts{
+		StorageRoot:       "network",
+		PathTransformFunc: CASPathTransformFunc,
+		Transport:         tcpTransport,
+		BootstrapNodes:    nodes,
+	})
 }
 
 func main() {
-	tr := p2p.NewTCPTransport(p2p.TCPTransportOpts{
-		ListenAddress: ":4000",
-		ShakeHands:    p2p.NOPHandshake,
-		Decoder:       p2p.DefaultDecoder{},
-		OnPeer:        OnPeer,
-	})
+	s1 := makeServer(":4000")
+	s2 := makeServer(":4001", ":4000")
 
 	go func() {
-		for {
-			msg := <-tr.Consume()
-			log.Printf("Received message: %+v", msg)
-		}
+		log.Fatal(s1.Start())
 	}()
-
-	if err := tr.ListenAndAccept(); err != nil {
-		log.Fatal(err)
-	}
+	go func() {
+		log.Fatal(s2.Start())
+	}()
 
 	select {}
 }
