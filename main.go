@@ -1,9 +1,10 @@
 package main
 
 import (
+	"bytes"
 	"filesync/p2p"
 	"fmt"
-	"log"
+	"time"
 )
 
 func makeServer(listenAddr string, nodes ...string) *FileServer {
@@ -17,24 +18,28 @@ func makeServer(listenAddr string, nodes ...string) *FileServer {
 		},
 	})
 
-	return NewFileServer(FileServerOpts{
+	s := NewFileServer(FileServerOpts{
 		StorageRoot:       "network",
 		PathTransformFunc: CASPathTransformFunc,
 		Transport:         tcpTransport,
 		BootstrapNodes:    nodes,
 	})
+
+	tcpTransport.OnPeer = s.OnPeer
+
+	return s
 }
 
 func main() {
 	s1 := makeServer(":4000")
 	s2 := makeServer(":4001", ":4000")
 
-	go func() {
-		log.Fatal(s1.Start())
-	}()
-	go func() {
-		log.Fatal(s2.Start())
-	}()
+	go s1.Start()
+	time.Sleep(1 * time.Second)
+	go s2.Start()
+	time.Sleep(1 * time.Second)
+	data := bytes.NewReader([]byte("hello world"))
+	_ = s2.StoreData("hello.txt", data)
 
 	select {}
 }

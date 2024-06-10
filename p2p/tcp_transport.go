@@ -10,21 +10,22 @@ import (
 
 // TCPPeer is a struct that represents a remote node over a TCP connection.
 type TCPPeer struct {
-	conn net.Conn
+	// Conn is the underlying TCP connection.
+	net.Conn
 
 	// If we dial and retrieve conn => outbound = true.
 	// If we accept and retrieve conn => outbound = false.
 	outbound bool
 }
 
-// Close closes network the connection.
-func (p *TCPPeer) Close() error {
-	return p.conn.Close()
+func (p *TCPPeer) Send(b []byte) error {
+	_, err := p.Write(b)
+	return err
 }
 
 func NewTCPPeer(conn net.Conn, outbound bool) *TCPPeer {
 	return &TCPPeer{
-		conn:     conn,
+		Conn:     conn,
 		outbound: outbound,
 	}
 }
