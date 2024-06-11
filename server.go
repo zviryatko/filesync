@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/gob"
 	"filesync/p2p"
-	"fmt"
 	"io"
 	"log"
 	"sync"
@@ -51,37 +50,68 @@ func (s *FileServer) Start() error {
 	return nil
 }
 
-type Payload struct {
+type Message struct {
+	From    string
+	Payload any
+}
+
+type DataMessage struct {
 	Key  string
 	Data []byte
 }
 
-func (s *FileServer) broadcast(p *Payload) error {
+func (s *FileServer) broadcast(msg *Message) error {
 	var peers []io.Writer
 	for _, peer := range s.peers {
 		peers = append(peers, peer)
 
 	}
 	mw := io.MultiWriter(peers...)
-	return gob.NewEncoder(mw).Encode(p)
+	return gob.NewEncoder(mw).Encode(msg)
 }
 
 func (s *FileServer) StoreData(key string, r io.Reader) error {
 	// 1. store file on disk.
 	// 2. broadcast to all known peers.
+
 	buf := new(bytes.Buffer)
-	tee := io.TeeReader(r, buf)
-	if err := s.store.writeStream(key, tee); err != nil {
+	msg := Message{
+		From:    "test",
+		Payload: []byte("hello"),
+	}
+	if err := gob.NewEncoder(buf).Encode(msg); err != nil {
 		return err
 	}
-	p := &Payload{
-		Key:  key,
-		Data: buf.Bytes(),
+	for _, peer := range s.peers {
+		if err := peer.Send(buf.Bytes()); err != nil {
+			return err
+		}
 	}
 
-	fmt.Println(buf.Bytes())
+	payload := []byte("large file")
+	for _, peer := range s.peers {
+		if err := peer.Send(payload); err != nil {
+			return err
+		}
+	}
 
-	return s.broadcast(p)
+	//buf := new(bytes.Buffer)
+	//tee := io.TeeReader(r, buf)
+	//if err := s.store.writeStream(key, tee); err != nil {
+	//	return err
+	//}
+	//p := &DataMessage{
+	//	Key:  key,
+	//	Data: buf.Bytes(),
+	//}
+	//
+	//fmt.Println(buf.Bytes())
+	//
+	//return s.broadcast(&Message{
+	//	From:    s.Transport.ListenAddr(),
+	//	Payload: p,
+	//})
+	return nil
 }
 
 func (s *FileServer) Stop() {
@@ -97,6 +127,14 @@ func (s *FileServer) OnPeer(p p2p.Peer) error {
 
 	return nil
 }
+
+//func (f *FileServer) handleMessage(m *Message) error {
+//	switch p := m.Payload.(type) {
+//	case *DataMessage:
+//		fmt.Printf("received data message: %s\n", p.Key)
+//	}
+//	return nil
+//}
 
 func (s *FileServer) bootstrapNetwork() error {
 	for _, addr := range s.BootstrapNodes {
@@ -120,11 +158,28 @@ func (s *FileServer) loop() {
 	for {
 		select {
 		case rpc := <-s.Transport.Consume():
-			var p Payload
-			if err := gob.NewDecoder(bytes.NewReader(rpc.Payload)).Decode(&p); err != nil {
-				fmt.Printf("failed to decode payload: %s\n", err)
+			var msg Message
+			if err := gob.NewDecoder(bytes.NewReader(rpc.Payload)).Decode(&msg); err != nil {
+				log.Printf("failed to decode payload: %s\n", err)
 			}
-			fmt.Printf("%+v\n", p)
+
+			peer, ok := s.peers[rpc.From.String()]
+			if !ok {
+				log.Printf("unknown peer: %s\n", rpc.From)
+				continue
+			}
+			b := make([]byte, 1024)
+			n, err := peer.Read(b)
+			if err != nil {
+				log.Printf("failed to read from peer: %s\n", err)
+				continue
+			}
+			log.Printf("received: %s\n", string(b[:n]))
+
+			//if err := s.handleMessage(&msg); err != nil {
+			//	log.Printf("failed to handle message: %s\n", err)
+			//}
+			//fmt.Printf("recv: %s\n", string(msg.Payload.([]byte)))
 		case <-s.quitch:
 			return
 		}

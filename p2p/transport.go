@@ -21,4 +21,5 @@ type Transport interface {
 	Close() error
 	// Dial calls a remote node.
 	Dial(string) error
+	ListenAddr() string
 }

@@ -140,3 +140,7 @@ func (t *TCPTransport) handleConn(conn net.Conn) {
 		t.rpcch <- rpc
 	}
 }
+
+func (t *TCPTransport) ListenAddr() string {
+	return t.ListenAddress
+}
