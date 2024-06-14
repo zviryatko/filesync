@@ -37,9 +37,13 @@ func main() {
 	go s1.Start()
 	time.Sleep(1 * time.Second)
 	go s2.Start()
-	time.Sleep(1 * time.Second)
+	time.Sleep(2 * time.Second)
+
 	data := bytes.NewReader([]byte("hello world"))
-	_ = s2.StoreData("hello.txt", data)
+	err := s2.StoreData("hello.txt", data)
+	if err != nil {
+		panic(err)
+	}
 
 	select {}
 }

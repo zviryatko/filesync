@@ -4,9 +4,11 @@ import (
 	"bytes"
 	"encoding/gob"
 	"filesync/p2p"
+	"fmt"
 	"io"
 	"log"
 	"sync"
+	"time"
 )
 
 type FileServerOpts struct {
@@ -51,13 +53,12 @@ func (s *FileServer) Start() error {
 }
 
 type Message struct {
-	From    string
 	Payload any
 }
 
-type DataMessage struct {
+type MessageStoreFile struct {
 	Key  string
-	Data []byte
+	Size int
 }
 
 func (s *FileServer) broadcast(msg *Message) error {
@@ -74,10 +75,14 @@ func (s *FileServer) StoreData(key string, r io.Reader) error {
 	// 1. store file on disk.
 	// 2. broadcast to all known peers.
 
+	payload := []byte("large file")
+
 	buf := new(bytes.Buffer)
 	msg := Message{
-		From:    "test",
-		Payload: []byte("hello"),
+		Payload: MessageStoreFile{
+			Key:  key,
+			Size: len(payload),
+		},
 	}
 	if err := gob.NewEncoder(buf).Encode(msg); err != nil {
 		return err
@@ -88,7 +93,8 @@ func (s *FileServer) StoreData(key string, r io.Reader) error {
 		}
 	}
 
-	payload := []byte("large file")
+	time.Sleep(3 * time.Second)
+
 	for _, peer := range s.peers {
 		if err := peer.Send(payload); err != nil {
 			return err
@@ -128,13 +134,28 @@ func (s *FileServer) OnPeer(p p2p.Peer) error {
 	return nil
 }
 
-//func (f *FileServer) handleMessage(m *Message) error {
-//	switch p := m.Payload.(type) {
-//	case *DataMessage:
-//		fmt.Printf("received data message: %s\n", p.Key)
-//	}
-//	return nil
-//}
+func (f *FileServer) handleMessage(from string, m *Message) error {
+	switch p := m.Payload.(type) {
+	case MessageStoreFile:
+		return f.handleMessageStoreFile(from, p)
+	}
+	return nil
+}
+
+func (f *FileServer) handleMessageStoreFile(from string, msg MessageStoreFile) error {
+	peer, ok := f.peers[from]
+	if !ok {
+		return fmt.Errorf("unknown peer: %s", from)
+	}
+
+	if err := f.store.writeStream(msg.Key, io.LimitReader(peer, int64(msg.Size))); err != nil {
+		return err
+	}
+
+	peer.(*p2p.TCPPeer).Wg.Done()
+
+	return nil
+}
 
 func (s *FileServer) bootstrapNetwork() error {
 	for _, addr := range s.BootstrapNodes {
@@ -162,26 +183,15 @@ func (s *FileServer) loop() {
 			if err := gob.NewDecoder(bytes.NewReader(rpc.Payload)).Decode(&msg); err != nil {
 				log.Printf("failed to decode payload: %s\n", err)
 			}
-
-			peer, ok := s.peers[rpc.From.String()]
-			if !ok {
-				log.Printf("unknown peer: %s\n", rpc.From)
-				continue
+			if err := s.handleMessage(rpc.From.String(), &msg); err != nil {
+				log.Printf("failed to handle message: %s\n", err)
 			}
-			b := make([]byte, 1024)
-			n, err := peer.Read(b)
-			if err != nil {
-				log.Printf("failed to read from peer: %s\n", err)
-				continue
-			}
-			log.Printf("received: %s\n", string(b[:n]))
-
-			//if err := s.handleMessage(&msg); err != nil {
-			//	log.Printf("failed to handle message: %s\n", err)
-			//}
-			//fmt.Printf("recv: %s\n", string(msg.Payload.([]byte)))
 		case <-s.quitch:
 			return
 		}
 	}
+}
+
+func init() {
+	gob.Register(MessageStoreFile{})
 }

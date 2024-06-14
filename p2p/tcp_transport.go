@@ -6,6 +6,7 @@ import (
 	"io"
 	"log"
 	"net"
+	"sync"
 )
 
 // TCPPeer is a struct that represents a remote node over a TCP connection.
@@ -16,6 +17,8 @@ type TCPPeer struct {
 	// If we dial and retrieve conn => outbound = true.
 	// If we accept and retrieve conn => outbound = false.
 	outbound bool
+
+	Wg *sync.WaitGroup
 }
 
 func (p *TCPPeer) Send(b []byte) error {
@@ -27,6 +30,7 @@ func NewTCPPeer(conn net.Conn, outbound bool) *TCPPeer {
 	return &TCPPeer{
 		Conn:     conn,
 		outbound: outbound,
+		Wg:       &sync.WaitGroup{},
 	}
 }
 
@@ -137,7 +141,11 @@ func (t *TCPTransport) handleConn(conn net.Conn) {
 			return
 		}
 		rpc.From = conn.RemoteAddr()
+		peer.Wg.Add(1)
+		fmt.Printf("<========================= %s\n", rpc.From)
 		t.rpcch <- rpc
+		peer.Wg.Wait()
+		fmt.Printf("%s =========================>\n", rpc.From)
 	}
 }
 
