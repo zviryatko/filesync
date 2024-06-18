@@ -1,9 +1,9 @@
 package main
 
 import (
-	"bytes"
 	"filesync/p2p"
 	"fmt"
+	"io"
 	"time"
 )
 
@@ -39,11 +39,20 @@ func main() {
 	go s2.Start()
 	time.Sleep(2 * time.Second)
 
-	data := bytes.NewReader([]byte("hello world"))
-	err := s2.StoreData("hello.txt", data)
+	//data := bytes.NewReader([]byte("hello world"))
+	//err := s2.Store("hello.txt", data)
+	//if err != nil {
+	//	panic(err)
+	//}
+
+	r, err := s2.Get("hello1.txt")
 	if err != nil {
 		panic(err)
 	}
-
+	b, err := io.ReadAll(r)
+	if err != nil {
+		panic(err)
+	}
+	fmt.Println(string(b))
 	select {}
 }

@@ -23,7 +23,9 @@ func TestStore(t *testing.T) {
 		PathTransformFunc: CASPathTransformFunc,
 	})
 	data := []byte("hello world")
-	assert.Nil(t, s.writeStream(key, bytes.NewReader(data)))
+	l, err := s.writeStream(key, bytes.NewReader(data))
+	assert.Nil(t, err)
+	assert.Equal(t, int64(len(data)), l)
 	r, err := s.Read(key)
 	assert.Nil(t, err)
 	b, _ := io.ReadAll(r)

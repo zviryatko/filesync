@@ -172,28 +172,28 @@ func (s *Store) readStream(key string) (io.ReadCloser, error) {
 	return f, nil
 }
 
-func (s *Store) writeStream(key string, r io.Reader) error {
+func (s *Store) writeStream(key string, r io.Reader) (int64, error) {
 	pathKey, err := s.PathTransformFunc(key)
 	if err != nil {
-		return err
+		return 0, err
 	}
 	pathAndFilename := s.path(pathKey)
 
 	if err := os.MkdirAll(s.dir(pathKey), os.ModePerm); err != nil {
-		return err
+		return 0, err
 	}
 
 	f, err := os.Create(pathAndFilename)
 	if err != nil {
-		return err
+		return 0, err
 	}
 
 	n, err := io.Copy(f, r)
 	if err != nil {
-		return err
+		return 0, err
 	}
 
 	log.Printf("Wrote %d bytes to %s", n, pathAndFilename)
 
-	return nil
+	return n, nil
 }
